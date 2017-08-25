@@ -1,9 +1,7 @@
 ﻿namespace SMHackCore {
     using System;
     using System.ComponentModel;
-    using System.Diagnostics;
     using System.IO;
-    using System.Linq;
     using System.Reflection;
     using System.Runtime.InteropServices;
     using System.Runtime.Remoting;
@@ -13,11 +11,14 @@
     using EasyHook;
 
     public abstract class ServerInterface : MarshalByRefObject {
+        protected static readonly Regex CommandLineParser = new Regex(@"(?:[^\""\s]|\""(?:[^\\\""]|\\.)*\"")+");
+
+        protected static readonly Regex CommandLineRegex =
+            new Regex(@"^(.+?\.exe)(?:\s+([^\s].+))?$|^(?:""(.+?\.exe)"")(?:\s+([^\s].+))?$");
+
         public readonly string ChannelName;
         public readonly string InjectionLibrary;
         protected readonly IpcServerChannel ServerChannel;
-        protected static readonly Regex CommandLineParser = new Regex(@"(?:[^\""\s]|\""(?:[^\\\""]|\\.)*\"")+");
-        protected static readonly Regex CommandLineRegex = new Regex(@"^(.+?\.exe)(\s+.+)?$");
 
         protected ServerInterface() {
             InjectionLibrary = Path.Combine(
@@ -28,6 +29,8 @@
                 WellKnownObjectMode.Singleton,
                 this);
         }
+
+        public abstract string PluginConfigPath { get; }
 
         protected static string GetRest(string s, int index) {
             var start = 0;
@@ -44,12 +47,10 @@
             args = "";
             if (!match.Success)
                 return false;
-            name = match.Groups[1].Value;
-            args = match.Groups[2].Value.TrimStart();
+            name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[3].Value;
+            args = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[4].Value;
             return true;
         }
-
-        public abstract string PluginConfigPath { get; }
 
         public virtual void DoInject(int id) {
             RemoteHooking.Inject(
@@ -73,9 +74,8 @@
                 null,
                 ref si,
                 out var pi);
-            if (!ret) {
+            if (!ret)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
             var pid = pi.DwProcessId;
             Thread.Sleep(100);
             DebugActiveProcessStop(pid);
@@ -88,7 +88,7 @@
         public abstract void Connect(int id, string image);
 
         public abstract void DoLog(params ClientLogPacket[] packet);
-        
+
         [DllImport("Kernel32.dll", SetLastError = true)]
         private static extern bool DebugActiveProcessStop(int dwProcessId);
 
