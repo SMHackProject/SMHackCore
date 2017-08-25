@@ -30,7 +30,8 @@
                 this);
         }
 
-        public abstract string PluginConfigPath { get; }
+        public abstract PluginConfig PluginConfig { get; }
+        public abstract string PluginConfigDirectory { get; }
 
         protected static string GetRest(string s, int index) {
             var start = 0;

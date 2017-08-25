@@ -27,7 +27,7 @@
         public InjectionEntryPoint(RemoteHooking.IContext context, string channelName) {
             Server = RemoteHooking.IpcConnectClient<ServerInterface>(channelName);
             SearchPaths = new[] {
-                Path.GetDirectoryName(Server.PluginConfigPath),
+                Server.PluginConfigDirectory,
                 Path.GetDirectoryName(typeof(InjectionEntryPoint).Assembly.Location)
             };
             LoadPlugins();
@@ -62,14 +62,15 @@
             try {
                 Server.Connect(Process.Id, Process.MainModule.FileName);
                 _plugins.AddRange(
-                    from line in File.ReadLines(Server.PluginConfigPath)
-                    let trimed = line.Trim()
-                    where trimed.Length != 0 && !trimed.StartsWith("#")
-                    let pluginPath = FindPlugin(trimed)
+                    from info in Server.PluginConfig.PluginInfos
+                    let pluginPath = FindPlugin(info.Path)
                     let pluginAssembly = Assembly.LoadFile(pluginPath)
                     from exportedType in pluginAssembly.GetExportedTypes()
                     where typeof(IPlugin).IsAssignableFrom(exportedType)
-                    select Activator.CreateInstance(exportedType, new ServerInterfaceProxy(pluginPath)) as IPlugin);
+                    select Activator.CreateInstance(
+                        exportedType,
+                        new ServerInterfaceProxy(pluginPath),
+                        info.Args) as IPlugin);
             } catch (Exception e) {
                 HandleException(e);
             }
@@ -128,8 +129,9 @@
         private void StartLoop() {
             Process.Resume();
             AppDomain.CurrentDomain.ProcessExit += delegate {
-                lock (this)
+                lock (this) {
                     Server.DoLog(PacketsCache.ToArray());
+                }
             };
             try {
                 while (true) {
